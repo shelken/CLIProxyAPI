@@ -52,10 +52,13 @@ fi
 set_step "check-existing-tag"
 if git ls-remote --exit-code --tags origin "refs/tags/${UPSTREAM_TAG}" >/dev/null 2>&1; then
   TAG_ALREADY_EXISTS="true"
-  FAILED_STEP=""
-  write_state_env
-  echo "[sync-upstream-release] Tag ${UPSTREAM_TAG} already exists on origin, skipping sync"
-  exit 0
+  if gh release view "${UPSTREAM_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+    FAILED_STEP=""
+    write_state_env
+    echo "[sync-upstream-release] Tag ${UPSTREAM_TAG} already exists on origin with release, skipping sync"
+    exit 0
+  fi
+  echo "[sync-upstream-release] Tag ${UPSTREAM_TAG} exists but release is missing, continue reconcile"
 fi
 
 set_step "fetch-refs"
@@ -108,7 +111,7 @@ git tag -fa "${UPSTREAM_TAG}" -m "Sync upstream release ${UPSTREAM_TAG}"
 git push origin "refs/tags/${UPSTREAM_TAG}" --force
 
 set_step "publish-release"
-gh release create "${UPSTREAM_TAG}" --target main --title "${UPSTREAM_TAG}" --generate-notes
+gh release create "${UPSTREAM_TAG}" --repo "${GITHUB_REPOSITORY}" --target main --title "${UPSTREAM_TAG}" --generate-notes
 
 set_step "write-state-env"
 FAILED_STEP=""
