@@ -6,6 +6,12 @@ STATE_ENV_FILE="${STATE_ENV_FILE:-.github/scripts/sync-upstream-release.env}"
 FAILED_STEP="init"
 UPSTREAM_TAG=""
 TAG_ALREADY_EXISTS="false"
+DRY_RUN="$(printf '%s' "${DRY_RUN:-false}" | tr '[:upper:]' '[:lower:]')"
+
+if [[ "${DRY_RUN}" != "true" && "${DRY_RUN}" != "false" ]]; then
+  echo "DRY_RUN must be true or false" >&2
+  exit 1
+fi
 
 write_state_env() {
   mkdir -p "$(dirname "${STATE_ENV_FILE}")"
@@ -13,6 +19,7 @@ write_state_env() {
     printf 'UPSTREAM_TAG=%s\n' "${UPSTREAM_TAG}"
     printf 'FAILED_STEP=%s\n' "${FAILED_STEP}"
     printf 'TAG_ALREADY_EXISTS=%s\n' "${TAG_ALREADY_EXISTS}"
+    printf 'DRY_RUN=%s\n' "${DRY_RUN}"
   } >"${STATE_ENV_FILE}"
 }
 
@@ -49,12 +56,6 @@ set_step "fetch-refs"
 git fetch --prune --tags upstream
 git fetch --prune --tags origin
 
-set_step "set-origin-auth-url"
-: "${GITHUB_TOKEN:?GITHUB_TOKEN is required}"
-: "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
-git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-export GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN}}"
-
 set_step "refresh-upstream-main"
 git checkout -B upstream-main upstream/main
 
@@ -76,6 +77,20 @@ git reset --hard feature-overlay
 
 set_step "validate-build"
 go build -o test-output ./cmd/server && rm -f test-output
+
+if [[ "${DRY_RUN}" == "true" ]]; then
+  set_step "dry-run-skip-publish"
+  FAILED_STEP=""
+  write_state_env
+  echo "[sync-upstream-release] Dry run completed for ${UPSTREAM_TAG}"
+  exit 0
+fi
+
+set_step "set-origin-auth-url"
+: "${GITHUB_TOKEN:?GITHUB_TOKEN is required}"
+: "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
+git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+export GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN}}"
 
 set_step "push-branches"
 git push origin upstream-main --force-with-lease
