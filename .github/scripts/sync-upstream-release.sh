@@ -68,21 +68,13 @@ git fetch --prune origin
 set_step "refresh-upstream-main"
 git checkout -B upstream-main upstream/main
 
-set_step "rebase-feature-overlay"
-if git show-ref --verify --quiet refs/heads/feature-overlay; then
-  git checkout feature-overlay
-else
-  git checkout -B feature-overlay origin/feature-overlay
-fi
-git rebase upstream-main
-
-set_step "reset-main-to-overlay"
+set_step "rebase-main"
 if git show-ref --verify --quiet refs/heads/main; then
   git checkout main
 else
   git checkout -B main origin/main
 fi
-git reset --hard feature-overlay
+git rebase upstream-main
 
 set_step "validate-build"
 go build -o test-output ./cmd/server && rm -f test-output
@@ -103,7 +95,6 @@ export GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN}}"
 
 set_step "push-branches"
 git push origin upstream-main --force-with-lease
-git push origin feature-overlay --force-with-lease
 git push origin main --force-with-lease
 
 set_step "publish-tag"

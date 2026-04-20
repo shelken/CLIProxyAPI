@@ -17,13 +17,14 @@ go build -o test-output ./cmd/server && rm test-output # Verify compile (REQUIRE
 - Common flags: `--config <path>`, `--tui`, `--standalone`, `--local-model`, `--no-browser`, `--oauth-callback-port <port>`
 
 ## Fork Development Flow
-- `upstream-main` mirrors upstream `main` only and must not carry fork-specific commits.
-- `main` keeps only fork release automation and other intentionally long-lived fork maintenance changes.
-- Start new feature work from `upstream-main` on `feature/<name>` and never develop directly on `main`.
-- Move a change into `feature-overlay` only when it is confirmed as a long-term fork delta that should survive upstream syncs.
-- Sync upstream releases only through `sync-upstream-release.yml`, not by manual branch mixing.
-- Check `main` and `feature-overlay` for unexpected commits before publishing a release.
-- Fork tags and releases must reuse upstream tag names so downstream automation can follow one version line.
+- `upstream-main` only mirrors upstream `main` and never carries fork-specific commits.
+- `main` is fork release branch and should keep only release-ready fork changes.
+- `dev` is long-lived daily development branch and should preserve ongoing work.
+- Start new work from `dev` on `feature/<name>` or commit to `dev` directly for small changes.
+- Promote changes from `dev` to `main` manually after confirming they should ship with fork releases.
+- Sync upstream releases only through `sync-upstream-release.yml`, which updates `upstream-main` and rebases `main` onto it.
+- Check `main` for unexpected commits before publishing a fork release.
+- Fork tags and releases must reuse upstream tag names so downstream automation follows one version line.
 - `containers` must follow fork releases through Renovate and must not pin a source branch name.
 
 ## Config
