@@ -1,0 +1,95 @@
+name: sync-upstream-release
+
+on:
+  schedule:
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Skip push/tag/release"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      STATE_ENV_FILE: .github/scripts/sync-upstream-release.env
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run upstream release sync helper
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: bash .github/scripts/sync-upstream-release.sh
+
+      - name: Load sync state
+        if: always()
+        run: |
+          if [[ -f "${STATE_ENV_FILE}" ]]; then
+            cat "${STATE_ENV_FILE}" >> "${GITHUB_ENV}"
+          else
+            {
+              echo "UPSTREAM_TAG="
+              echo "FAILED_STEP=sync-helper-not-started"
+              echo "TAG_ALREADY_EXISTS=false"
+            } >> "${GITHUB_ENV}"
+          fi
+
+      - name: Create failure issue
+        if: failure()
+        uses: actions/github-script@v7
+        env:
+          FAILED_STEP: ${{ env.FAILED_STEP }}
+          UPSTREAM_TAG: ${{ env.UPSTREAM_TAG }}
+          TAG_ALREADY_EXISTS: ${{ env.TAG_ALREADY_EXISTS }}
+          DRY_RUN: ${{ env.DRY_RUN }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const failedStep = process.env.FAILED_STEP || "unknown";
+            const upstreamTag = process.env.UPSTREAM_TAG || "unknown";
+            const tagAlreadyExists = process.env.TAG_ALREADY_EXISTS || "false";
+            const dryRun = process.env.DRY_RUN || "false";
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+
+            const title = `[sync-upstream-release] failed at ${failedStep}`;
+            const body = [
+              "Automated upstream release sync failed.",
+              "",
+              `- failed_step: ${failedStep}`,
+              `- upstream_tag: ${upstreamTag}`,
+              `- tag_already_exists: ${tagAlreadyExists}`,
+              `- dry_run: ${dryRun}`,
+              `- workflow_run: ${runUrl}`,
+            ].join("\n");
+
+            await github.rest.issues.create({
+              owner,
+              repo,
+              title,
+              body,
+            });
